@@ -8,6 +8,7 @@ const PORT = parseInt(process.env.PORT || '8080');
 const HOST = process.env.HOST || '0.0.0.0';
 const API_KEY = process.env.API_KEY || 'rewind-pet-2026-secure-key';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash-native-audio-preview-12-2025';
 
 if (!GEMINI_API_KEY) {
   console.error('❌ GEMINI_API_KEY not set');
@@ -32,6 +33,18 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 
 console.log(`\n🐾 Pet Talking Service (Raw WebSocket) starting on ${HOST}:${PORT}`);
 console.log(`📡 WebSocket endpoint: ws://${HOST}:${PORT}/ws`);
+console.log(`🤖 Gemini model: ${GEMINI_MODEL}`);
+
+function buildSetupMessage(source: any) {
+  const setup = source?.setup ?? source?.config ?? {};
+  return {
+    setup: {
+      model: GEMINI_MODEL,
+      systemInstruction: setup.systemInstruction,
+      generationConfig: setup.generationConfig ?? { responseModalities: ['AUDIO', 'TEXT'] },
+    },
+  };
+}
 
 wss.on('connection', (ws, req) => {
   console.log('✅ iOS client connected');
@@ -95,7 +108,8 @@ wss.on('connection', (ws, req) => {
   });
 
   geminiWS.on('close', (code, reason) => {
-    console.log(`👋 Gemini disconnected (${sessionId}) code: ${code}`);
+    const reasonText = reason && reason.length > 0 ? reason.toString() : 'no reason';
+    console.log(`👋 Gemini disconnected (${sessionId}) code: ${code} reason: ${reasonText}`);
   });
 
   // Forward iOS messages to Gemini
@@ -108,13 +122,7 @@ wss.on('connection', (ws, req) => {
       
       if (data.config) {
         // Convert iOS client format { config: {...} } to Gemini format { setup: {...} }
-        const setupMsg = {
-          setup: {
-            model: data.config.model,
-            systemInstruction: data.config.systemInstruction,
-            generationConfig: data.config.generationConfig
-          }
-        };
+        const setupMsg = buildSetupMessage(data);
 
         console.log(`📤 Converting setup to Gemini format:`, JSON.stringify(setupMsg, null, 2));
         if (geminiWS.readyState === WebSocket.OPEN) {
@@ -125,13 +133,14 @@ wss.on('connection', (ws, req) => {
           messageQueue.push(JSON.stringify(setupMsg));
         }
       } else if (data.setup) {
-        // Already in correct format, forward as-is
+        // Normalize iOS setup payload to a known-valid model.
+        const setupMsg = buildSetupMessage(data);
         if (geminiWS.readyState === WebSocket.OPEN) {
-          geminiWS.send(msgStr);
-          console.log(`📤 Forwarded setup to Gemini`);
+          geminiWS.send(JSON.stringify(setupMsg));
+          console.log(`📤 Forwarded normalized setup to Gemini`);
         } else {
           console.log(`⏳ Queuing setup (Gemini WS state: ${geminiWS.readyState})`);
-          messageQueue.push(msgStr);
+          messageQueue.push(JSON.stringify(setupMsg));
         }
       } else if (data.clientContent) {
         if (!setupComplete) {
