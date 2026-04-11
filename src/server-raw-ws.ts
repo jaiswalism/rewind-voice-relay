@@ -8,7 +8,10 @@ const PORT = parseInt(process.env.PORT || '8080');
 const HOST = process.env.HOST || '0.0.0.0';
 const API_KEY = process.env.API_KEY || 'rewind-pet-2026-secure-key';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash-native-audio-preview-12-2025';
+// For raw WebSocket Live API, use the full models/ prefix.
+// gemini-3.1-flash-live-preview is the latest recommended live model (Apr 2026).
+// gemini-2.5-flash-native-audio-preview-12-2025 is the prior preview, also valid.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-3.1-flash-live-preview';
 
 if (!GEMINI_API_KEY) {
   console.error('❌ GEMINI_API_KEY not set');
@@ -35,13 +38,20 @@ console.log(`\n🐾 Pet Talking Service (Raw WebSocket) starting on ${HOST}:${PO
 console.log(`📡 WebSocket endpoint: ws://${HOST}:${PORT}/ws`);
 console.log(`🤖 Gemini model: ${GEMINI_MODEL}`);
 
+// Build the BidiGenerateContentSetup message per the proto spec:
+//   { setup: { model, generationConfig: { responseModalities }, systemInstruction } }
+// Note: "config" is an SDK abstraction; the raw v1beta API uses "setup" as the outer key.
 function buildSetupMessage(source: any) {
-  const setup = source?.setup ?? source?.config ?? {};
+  const incoming = source?.config ?? source?.setup ?? {};
   return {
     setup: {
       model: GEMINI_MODEL,
-      systemInstruction: setup.systemInstruction,
-      generationConfig: setup.generationConfig ?? { responseModalities: ['AUDIO', 'TEXT'] },
+      generationConfig: {
+        responseModalities: ['AUDIO'],
+      },
+      systemInstruction: incoming.systemInstruction ?? {
+        parts: [{ text: 'You are a calm virtual companion in a wellness app. Be warm, empathetic, and conversational. Respond with 2-4 complete sentences. Always acknowledge feelings first, then offer gentle support.' }]
+      },
     },
   };
 }
@@ -62,9 +72,9 @@ wss.on('connection', (ws, req) => {
   const sessionId = Math.random().toString(36).substring(7);
   console.log(`📝 Session started: ${sessionId}`);
 
-  // Connect directly to Gemini Live API via raw WebSocket
-  // v1alpha is required for Native Audio Dialog model
-  const geminiURL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${GEMINI_API_KEY}`;
+  // Connect directly to Gemini Live API via raw WebSocket.
+  // The standard raw WS endpoint uses v1beta. v1alpha is ONLY for ephemeral tokens.
+  const geminiURL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${GEMINI_API_KEY}`;
   
   console.log(`🔗 Connecting to Gemini Live API...`);
   const geminiWS = new WebSocket(geminiURL);
