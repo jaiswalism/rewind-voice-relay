@@ -1,11 +1,22 @@
-FROM node:20-slim
+FROM node:20-slim AS builder
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci
 
-COPY dist/ ./dist/
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
+
+FROM node:20-slim AS runner
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+COPY --from=builder /app/dist ./dist
 
 ENV NODE_ENV=production
 EXPOSE 8080

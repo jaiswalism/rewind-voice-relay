@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 
-const GEMINI_API_KEY = 'AIzaSyAMV_nJ0MIFhjazntC7dnSIWz6B3zElV8o';
+const GEMINI_API_KEY = 'api-key-placeholder';
 
 // Test v1beta endpoint
 const GEMINI_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${GEMINI_API_KEY}`;

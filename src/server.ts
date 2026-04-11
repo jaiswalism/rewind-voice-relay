@@ -58,7 +58,16 @@ wss.on('connection', async (ws, req) => {
   try {
     liveSession = await ai.live.connect({
       model: 'gemini-2.5-flash',
-      systemInstruction: 'You are a calm virtual companion in a wellness app. Be warm, empathetic, and conversational. Respond with 2-4 complete sentences.',
+      callbacks: {
+        onmessage: (event: any) => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(event));
+          }
+        },
+        onerror: (event: any) => {
+          console.error(`⚠️ Gemini callback error (${sessionId}):`, event?.error ?? event);
+        },
+      },
     });
 
     console.log(`🔗 Connected to Gemini Live API (${sessionId})`);
