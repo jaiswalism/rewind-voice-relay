@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
+import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -13,6 +14,8 @@ if (!GEMINI_API_KEY) {
   console.error('❌ GEMINI_API_KEY not set');
   process.exit(1);
 }
+
+const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 // Create HTTP server
 const server = createServer((req, res) => {
@@ -30,10 +33,10 @@ const server = createServer((req, res) => {
 // Create WebSocket server
 const wss = new WebSocketServer({ server, path: '/ws' });
 
-console.log(`🐾 Pet Talking Service starting on ${HOST}:${PORT}`);
+console.log(`\n🐾 Pet Talking Service starting on ${HOST}:${PORT}`);
 console.log(`📡 WebSocket endpoint: ws://${HOST}:${PORT}/ws`);
 
-wss.on('connection', (ws, req) => {
+wss.on('connection', async (ws, req) => {
   console.log('✅ iOS client connected');
   
   // Verify API key
@@ -46,29 +49,90 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
-  let sessionId = Math.random().toString(36).substring(7);
+  const sessionId = Math.random().toString(36).substring(7);
   console.log(`📝 Session started: ${sessionId}`);
 
-  // Handle messages from iOS client
-  ws.on('message', (message) => {
+  // Start Live API session
+  let liveSession: any = null;
+  
+  try {
+    liveSession = await ai.live.connect({
+      model: 'gemini-2.5-flash',
+      systemInstruction: 'You are a calm virtual companion in a wellness app. Be warm, empathetic, and conversational. Respond with 2-4 complete sentences.',
+    });
+
+    console.log(`🔗 Connected to Gemini Live API (${sessionId})`);
+    console.log(`📋 Session methods:`, Object.getOwnPropertyNames(Object.getPrototypeOf(liveSession)).filter(k => !k.startsWith('_')));
+    
+    // Try using tLiveClientContent which might return a response stream
     try {
-      const data = JSON.parse(message.toString());
-      console.log(`📨 Received from iOS (${sessionId}):`, data.type);
+      const responsePromise = liveSession.tLiveClientContent();
+      console.log(`📋 tLiveClientContent returned:`, typeof responsePromise);
       
-      // For now, echo back for testing
-      // Real implementation will proxy to Gemini Live API
-      ws.send(JSON.stringify({
-        type: 'ack',
-        sessionId,
-        timestamp: Date.now()
-      }));
-    } catch (error) {
-      console.error('❌ Error parsing message:', error);
+      if (responsePromise && typeof responsePromise.then === 'function') {
+        responsePromise.then((response: any) => {
+          console.log(`💬 tLiveClientContent response (${sessionId}):`, JSON.stringify(response).substring(0, 200));
+        }).catch((err: Error) => {
+          console.log(`⚠️ tLiveClientContent error:`, err.message);
+        });
+      }
+    } catch (error: any) {
+      console.log(`⚠️ tLiveClientContent call failed:`, error.message);
+    }
+
+  } catch (error: any) {
+    console.error(`❌ Failed to create Live session (${sessionId}):`, error.message);
+    ws.send(JSON.stringify({ error: 'Failed to connect to Gemini' }));
+    return;
+  }
+
+  // Handle messages from iOS client
+  ws.on('message', async (message) => {
+    const msgStr = message.toString();
+    console.log(`📨 iOS -> Service (${sessionId}): ${msgStr.substring(0, 100)}`);
+    
+    try {
+      const data = JSON.parse(msgStr);
+      
+      if (liveSession) {
+        // Forward to Gemini Live API using correct method
+        if (data.setup) {
+          console.log(`⏭️ Skipping setup (already connected)`);
+          ws.send(JSON.stringify({ setupComplete: true }));
+        } else if (data.clientContent) {
+          // Use tLiveClientContent which returns the response!
+          const turns = data.clientContent.parts ? [data.clientContent] : (data.clientContent.turns || []);
+          console.log(`📤 Calling tLiveClientContent with ${turns.length} turns`);
+          
+          try {
+            const response = await liveSession.tLiveClientContent({ turns });
+            console.log(`💬 tLiveClientContent response (${sessionId}):`, JSON.stringify(response).substring(0, 300));
+            
+            // Forward to iOS
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify(response));
+              console.log(`✅ Forwarded response to iOS`);
+            }
+          } catch (error: any) {
+            console.error(`❌ tLiveClientContent error (${sessionId}):`, error.message);
+          }
+        } else if (data.realtimeInput) {
+          await liveSession.sendRealtimeInput(data.realtimeInput);
+          console.log(`✅ Forwarded realtimeInput to Gemini`);
+        } else {
+          console.log(`⚠️ Unknown message type:`, Object.keys(data));
+        }
+      }
+    } catch (error: any) {
+      console.error(`❌ Error forwarding (${sessionId}):`, error.message);
     }
   });
 
   ws.on('close', () => {
-    console.log(`👋 Client disconnected: ${sessionId}`);
+    console.log(`👋 iOS client disconnected (${sessionId})`);
+    if (liveSession) {
+      liveSession.close();
+    }
   });
 
   ws.on('error', (error) => {
@@ -85,6 +149,14 @@ process.on('SIGTERM', () => {
 process.on('SIGINT', () => {
   console.log('\n🛑 Shutting down...');
   wss.close(() => server.close());
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('\n💥 UNCAUGHT EXCEPTION:', error.message);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('\n💥 UNHANDLED REJECTION:', reason);
 });
 
 server.listen(PORT, HOST, () => {

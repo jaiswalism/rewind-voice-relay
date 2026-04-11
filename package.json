@@ -5,12 +5,12 @@
   "main": "dist/server.js",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx watch src/server-raw-ws.ts",
     "start": "node dist/server.js",
     "build": "tsc"
   },
   "dependencies": {
-    "@google/genai": "^1.35.0",
+    "@google/genai": "^1.49.0",
     "dotenv": "^17.2.3",
     "ws": "^8.16.0"
   },
