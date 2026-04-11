@@ -8,14 +8,13 @@ dotenv.config();
 const PORT = parseInt(process.env.PORT || '8080');
 const HOST = process.env.HOST || '0.0.0.0';
 const API_KEY = process.env.API_KEY || 'rewind-pet-2026-secure-key';
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 if (!GEMINI_API_KEY) {
-  console.error('❌ GEMINI_API_KEY not set');
-  process.exit(1);
+  console.warn('⚠️ GEMINI_API_KEY not set; websocket sessions will be rejected until it is configured');
 }
 
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+const ai = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
 
 // Create HTTP server
 const server = createServer((req, res) => {
@@ -51,6 +50,13 @@ wss.on('connection', async (ws, req) => {
 
   const sessionId = Math.random().toString(36).substring(7);
   console.log(`📝 Session started: ${sessionId}`);
+
+  if (!ai) {
+    console.error(`❌ GEMINI_API_KEY missing; cannot create live session (${sessionId})`);
+    ws.send(JSON.stringify({ error: 'Service is not configured' }));
+    ws.close(1011, 'Service not configured');
+    return;
+  }
 
   // Start Live API session
   let liveSession: any = null;
