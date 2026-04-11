@@ -2,11 +2,11 @@
   "name": "rewind-pet-talking-service",
   "version": "1.0.0",
   "description": "Real-time pet companion conversation service using Gemini Live API",
-  "main": "dist/server.js",
+  "main": "dist/server-raw-ws.js",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server-raw-ws.ts",
-    "start": "node dist/server.js",
+    "start": "node dist/server-raw-ws.js",
     "build": "tsc"
   },
   "dependencies": {
