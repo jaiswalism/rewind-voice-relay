@@ -131,9 +131,10 @@ wss.on('connection', async (ws, req) => {
           } catch (error: any) {
             console.error(`❌ tLiveClientContent error (${sessionId}):`, error.message);
           }
-        } else if (data.realtimeInput) {
-          await liveSession.sendRealtimeInput(data.realtimeInput);
-          console.log(`✅ Forwarded realtimeInput to Gemini`);
+        } else if (data.realtimeInput || data.realtime_input) {
+          const realtimeInput = data.realtimeInput ?? data.realtime_input;
+          await liveSession.sendRealtimeInput(realtimeInput);
+          console.log(`✅ Forwarded realtime input to Gemini`);
         } else {
           console.log(`⚠️ Unknown message type:`, Object.keys(data));
         }

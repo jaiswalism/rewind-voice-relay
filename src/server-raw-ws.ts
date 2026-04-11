@@ -167,10 +167,10 @@ wss.on('connection', (ws, req) => {
         } else {
           console.log(`⚠️ Gemini not ready`);
         }
-      } else if (data.realtimeInput) {
+      } else if (data.realtimeInput || data.realtime_input) {
         if (geminiWS.readyState === WebSocket.OPEN) {
           geminiWS.send(msgStr);
-          console.log(`✅ Forwarded realtimeInput to Gemini`);
+          console.log(`✅ Forwarded realtime input to Gemini`);
         } else {
           console.log(`⚠️ Gemini not ready`);
         }
