@@ -1,55 +1,18 @@
-# 🐾 Rewind Pet Talking Service
+# rewind-voice-relay
 
-Real-time pet companion conversation service using Gemini Live API (WebSocket streaming).
+WebSocket relay server that proxies real-time audio between the Rewind iOS app and the Gemini Live API.
 
-## 🚀 Quick Start
+> Built specifically for Rewind. Not a general-purpose relay.
 
-### 1. Install dependencies
-```bash
-npm install
-```
+## What it does
 
-### 2. Configure environment
-```bash
-cp .env.example .env
-# Edit .env and add your GEMINI_API_KEY
-```
+Receives audio from the iOS client over WebSocket, forwards it to Gemini Live in the correct binary format, and streams the response back — enabling low-latency voice conversations with the virtual companion.
 
-### 3. Run
-```bash
-npm run dev
-```
+## Stack
 
-## 📡 WebSocket API
+- Node.js + WebSocket (`ws`)
+- Gemini Live API (v1beta)
 
-### Connection
-```
-ws://localhost:8080/ws?api_key=your_api_key
-```
+---
 
-### Message Format
-The service proxies audio/text between iOS app and Gemini Live API for real-time conversations.
-
-## 🔧 Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GEMINI_API_KEY` | ✅ | Your Gemini API key |
-| `PORT` | ❌ | Server port (default: 8080) |
-| `HOST` | ❌ | Server host (default: 0.0.0.0) |
-| `API_KEY` | ❌ | Client authentication key |
-
-## 🐳 Deployment
-
-Deploy to Railway, Render, or any Node.js hosting platform:
-
-```bash
-npm run build
-npm start
-```
-
-## 🔒 Security
-
-- API key authentication for client connections
-- Gemini API key stays server-side (never exposed to clients)
-- Secure WebSocket connections (wss://) in production
+© 2026 Shyam Jaiswal · rewind@shyamjaiswal.in
