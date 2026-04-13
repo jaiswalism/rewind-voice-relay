@@ -18,15 +18,21 @@ const ai = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
 
 // Create HTTP server
 const server = createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ 
-    status: 'ok',
-    service: 'rewind-pet-talking-service',
-    version: '1.0.0',
-    endpoints: {
-      websocket: `ws://localhost:${PORT}/ws`,
-    }
-  }));
+  const path = req.url?.split('?')[0];
+  if (path === '/' || path === '') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ 
+      status: 'ok',
+      service: 'rewind-pet-talking-service',
+      version: '1.0.0',
+      endpoints: {
+        websocket: `ws://localhost:${PORT}/ws`,
+      }
+    }));
+  } else {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Not found' }));
+  }
 });
 
 // Create WebSocket server
@@ -60,6 +66,7 @@ wss.on('connection', async (ws, req) => {
 
   // Start Live API session
   let liveSession: any = null;
+  let chunksSent = 0;
   
   try {
     liveSession = await ai.live.connect({
@@ -104,10 +111,13 @@ wss.on('connection', async (ws, req) => {
   // Handle messages from iOS client
   ws.on('message', async (message) => {
     const msgStr = message.toString();
-    console.log(`📨 iOS -> Service (${sessionId}): ${msgStr.substring(0, 100)}`);
     
     try {
       const data = JSON.parse(msgStr);
+      // Only log non-realtime inputs to avoid Railway rate limits
+      if (!data.realtimeInput && !data.realtime_input) {
+        console.log(`📨 iOS -> Service (${sessionId}): ${msgStr.substring(0, 100)}`);
+      }
       
       if (liveSession) {
         // Forward to Gemini Live API using correct method
@@ -134,7 +144,11 @@ wss.on('connection', async (ws, req) => {
         } else if (data.realtimeInput || data.realtime_input) {
           const realtimeInput = data.realtimeInput ?? data.realtime_input;
           await liveSession.sendRealtimeInput(realtimeInput);
-          console.log(`✅ Forwarded realtime input to Gemini`);
+          chunksSent++;
+          if (chunksSent >= 100) {
+            console.log(`✅ Forwarded 100 realtime chunks to Gemini (${sessionId})`);
+            chunksSent = 0;
+          }
         } else {
           console.log(`⚠️ Unknown message type:`, Object.keys(data));
         }

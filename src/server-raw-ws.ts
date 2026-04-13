@@ -20,15 +20,21 @@ if (!GEMINI_API_KEY) {
 
 // Create HTTP server
 const server = createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ 
-    status: 'ok',
-    service: 'rewind-pet-talking-service',
-    version: '1.0.0-raw-ws',
-    endpoints: {
-      websocket: `ws://localhost:${PORT}/ws`,
-    }
-  }));
+  const path = req.url?.split('?')[0];
+  if (path === '/' || path === '') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ 
+      status: 'ok',
+      service: 'rewind-pet-talking-service',
+      version: '1.0.0-raw-ws',
+      endpoints: {
+        websocket: `ws://localhost:${PORT}/ws`,
+      }
+    }));
+  } else {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Not found' }));
+  }
 });
 
 // Create WebSocket server
@@ -81,6 +87,8 @@ wss.on('connection', (ws, req) => {
 
   let setupComplete = false;
   let messageQueue: string[] = [];
+  let chunksReceived = 0;
+  let chunksSent = 0;
 
   geminiWS.on('open', () => {
     console.log(`✅ Connected to Gemini Live API (${sessionId}) - waiting for client setup`);
@@ -96,7 +104,11 @@ wss.on('connection', (ws, req) => {
   // Forward Gemini responses to iOS
   geminiWS.on('message', (data) => {
     const dataStr = data.toString();
-    console.log(`💬 Gemini -> Service (${sessionId}):`, dataStr.substring(0, 200));
+    chunksReceived++;
+    if (chunksReceived >= 100) {
+      console.log(`💬 Gemini -> Service (${sessionId}): [Received 100 chunks heartbeat]`);
+      chunksReceived = 0;
+    }
     
     // Check for setupComplete
     try {
@@ -109,7 +121,7 @@ wss.on('connection', (ws, req) => {
     
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(dataStr);
-      console.log(`✅ Forwarded to iOS`);
+      // console.log(`✅ Forwarded to iOS`);
     }
   });
 
@@ -125,10 +137,13 @@ wss.on('connection', (ws, req) => {
   // Forward iOS messages to Gemini
   ws.on('message', (message) => {
     const msgStr = message.toString();
-    console.log(`📨 iOS -> Service (${sessionId}): ${msgStr.substring(0, 100)}`);
     
     try {
       const data = JSON.parse(msgStr);
+      // Only log non-realtime inputs to avoid Railway rate limits
+      if (!data.realtimeInput && !data.realtime_input) {
+        console.log(`📨 iOS -> Service (${sessionId}): ${msgStr.substring(0, 100)}`);
+      }
       
       if (data.config) {
         // Convert iOS client format { config: {...} } to Gemini format { setup: {...} }
@@ -189,7 +204,11 @@ wss.on('connection', (ws, req) => {
       } else if (data.realtimeInput || data.realtime_input) {
         if (geminiWS.readyState === WebSocket.OPEN) {
           geminiWS.send(msgStr);
-          console.log(`✅ Forwarded realtime input to Gemini`);
+          chunksSent++;
+          if (chunksSent >= 100) {
+            console.log(`✅ Forwarded 100 realtime chunks to Gemini (${sessionId})`);
+            chunksSent = 0;
+          }
         } else {
           console.log(`⚠️ Gemini not ready`);
         }
